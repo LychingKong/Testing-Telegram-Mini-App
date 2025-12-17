@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+
+    <!-- Telegram Mini App SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js?59"></script>
+
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        padding: 20px;
+      }
+
+      button {
+        padding: 12px 16px;
+        font-size: 16px;
+        margin-top: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1 id="welcome">Loading...</h1>
+
+    <button onclick="sayHello()">Click me</button>
+
+    <script>
+      const tg = window.Telegram.WebApp;
+      tg.expand(); // full height
+
+      const user = tg.initDataUnsafe?.user;
+
+      if (user) {
+        document.getElementById("welcome").innerText =
+          `Hello ${user.first_name}! 👋`;
+      } else {
+        document.getElementById("welcome").innerText = "Hello guest";
+      }
+
+      function sayHello() {
+        tg.showAlert("Mini App works 🎉");
+      }
+    </script>
+  </body>
+</html>
