@@ -558,7 +558,8 @@
       const GOOGLE_SCRIPT_URL =
         "https://script.google.com/macros/s/AKfycbya5AQd1Bur_3frdadyjqdB-YvP8Mynl-TYlbV0ymVOk8Xso0ZoEQfdYKIzNsameulSyg/exec";
 
-      // Product catalog
+      // Our product catalog - an array of product objects
+      // Each product has: id, name, price, image (emoji), and description
       const PRODUCTS = [
         {
           id: 1,
@@ -604,221 +605,467 @@
         },
       ];
 
-      // State
+      // ========================================
+      // GLOBAL VARIABLES (Our App's Memory)
+      // ========================================
+
+      // cart stores products that have been added to cart
+      // Example: { 1: 2, 3: 1 } means product 1 has quantity 2, product 3 has quantity 1
       let cart = {};
+
+      // productQuantities tracks the number selected before adding to cart
+      // Example: { 1: 3 } means user has selected 3 units of product 1
       let productQuantities = {};
+
+      // Stores information about the Telegram user (if available)
       let telegramUser = null;
 
-      // Initialize Telegram WebApp
+      // ========================================
+      // TELEGRAM INTEGRATION
+      // ========================================
+
+      // Check if this app is running inside Telegram
       if (window.Telegram && window.Telegram.WebApp) {
         const tg = window.Telegram.WebApp;
+
+        // Tell Telegram the app is ready
         tg.ready();
+
+        // Expand the app to full screen
         tg.expand();
 
+        // Try to get the user's Telegram information
         if (tg.initDataUnsafe && tg.initDataUnsafe.user) {
           telegramUser = tg.initDataUnsafe.user;
-          document.getElementById("userWelcome").textContent =
-            `Welcome, ${telegramUser.first_name}!`;
+
+          // Display a welcome message with the user's first name
+          const welcomeElement = document.getElementById("userWelcome");
+          welcomeElement.textContent =
+            "Welcome, " + telegramUser.first_name + "!";
         }
 
+        // Match the background color with Telegram's theme
         document.body.style.backgroundColor = tg.backgroundColor || "#f5f5f5";
       }
 
-      // Initialize app
+      // ========================================
+      // INITIALIZATION
+      // ========================================
+
+      // This function runs when the page first loads
       function init() {
-        renderProducts();
-        updateCartFooter();
+        renderProducts(); // Display all products on the page
+        updateCartFooter(); // Update the cart footer (will be hidden initially)
       }
 
-      // Render products
+      // ========================================
+      // PRODUCT DISPLAY FUNCTIONS
+      // ========================================
+
+      // This function creates HTML for all products and displays them
       function renderProducts() {
+        // Get the container where products will be displayed
         const grid = document.getElementById("productsGrid");
-        grid.innerHTML = PRODUCTS.map(
-          (product) => `
-        <div class="product-card">
-          <div class="product-content">
-            <div class="product-emoji">${product.image}</div>
-            <div class="product-name">${product.name}</div>
-            <div class="product-desc">${product.description}</div>
-            <div class="product-price">$${product.price.toFixed(2)}</div>
-            <div class="product-controls">
-              <div class="quantity-controls">
-                <button class="qty-btn" onclick="updateProductQuantity(${product.id}, -1)" 
-                  ${!productQuantities[product.id] ? "disabled" : ""}>−</button>
-                <div class="qty-display" id="qty-${product.id}">${productQuantities[product.id] || 0}</div>
-                <button class="qty-btn" onclick="updateProductQuantity(${product.id}, 1)">+</button>
+
+        // Create HTML for each product
+        let productsHTML = "";
+
+        // Loop through each product in our catalog
+        for (let i = 0; i < PRODUCTS.length; i++) {
+          const product = PRODUCTS[i];
+
+          // Get the current quantity for this product (default to 0 if not set)
+          const currentQuantity = productQuantities[product.id] || 0;
+
+          // Format the price to always show 2 decimal places
+          const formattedPrice = product.price.toFixed(2);
+
+          // Determine if minus button should be disabled
+          const minusDisabled = currentQuantity === 0 ? "disabled" : "";
+
+          // Determine if add to cart button should be disabled
+          const addDisabled = currentQuantity === 0 ? "disabled" : "";
+
+          // Build the HTML for this product card
+          productsHTML += `
+            <div class="product-card">
+              <div class="product-content">
+                <div class="product-emoji">${product.image}</div>
+                <div class="product-name">${product.name}</div>
+                <div class="product-desc">${product.description}</div>
+                <div class="product-price">$${formattedPrice}</div>
+                <div class="product-controls">
+                  <div class="quantity-controls">
+                    <button class="qty-btn" onclick="updateProductQuantity(${product.id}, -1)" ${minusDisabled}>−</button>
+                    <div class="qty-display" id="qty-${product.id}">${currentQuantity}</div>
+                    <button class="qty-btn" onclick="updateProductQuantity(${product.id}, 1)">+</button>
+                  </div>
+                  <button class="add-to-cart-btn" onclick="addToCart(${product.id})" ${addDisabled}>Add to Cart</button>
+                </div>
               </div>
-              <button class="add-to-cart-btn" onclick="addToCart(${product.id})"
-                ${!productQuantities[product.id] ? "disabled" : ""}>Add to Cart</button>
             </div>
-          </div>
-        </div>
-      `,
-        ).join("");
+          `;
+        }
+
+        // Put all the product HTML into the grid container
+        grid.innerHTML = productsHTML;
       }
 
-      // Update product quantity
-      function updateProductQuantity(productId, delta) {
-        productQuantities[productId] = Math.max(
-          0,
-          (productQuantities[productId] || 0) + delta,
-        );
-        document.getElementById(`qty-${productId}`).textContent =
-          productQuantities[productId];
+      // ========================================
+      // PRODUCT QUANTITY FUNCTIONS
+      // ========================================
 
-        const card = document
-          .getElementById(`qty-${productId}`)
-          .closest(".product-card");
+      // This function updates the quantity when user clicks + or - buttons
+      // productId: which product to update
+      // delta: how much to change (+1 or -1)
+      function updateProductQuantity(productId, delta) {
+        // Get the current quantity (or 0 if not set)
+        let currentQty = productQuantities[productId] || 0;
+
+        // Calculate new quantity
+        let newQty = currentQty + delta;
+
+        // Make sure quantity never goes below 0
+        if (newQty < 0) {
+          newQty = 0;
+        }
+
+        // Save the new quantity
+        productQuantities[productId] = newQty;
+
+        // Update the display to show the new quantity
+        const qtyDisplay = document.getElementById("qty-" + productId);
+        qtyDisplay.textContent = newQty;
+
+        // Find the product card container
+        const card = qtyDisplay.closest(".product-card");
+
+        // Find the minus button (first qty-btn)
         const minusBtn = card.querySelector(".qty-btn:first-child");
+
+        // Find the "Add to Cart" button
         const addBtn = card.querySelector(".add-to-cart-btn");
 
-        minusBtn.disabled = !productQuantities[productId];
-        addBtn.disabled = !productQuantities[productId];
+        // Disable minus button if quantity is 0
+        if (newQty === 0) {
+          minusBtn.disabled = true;
+          addBtn.disabled = true;
+        } else {
+          minusBtn.disabled = false;
+          addBtn.disabled = false;
+        }
       }
 
-      // Add to cart
+      // ========================================
+      // CART FUNCTIONS
+      // ========================================
+
+      // This function adds the selected quantity to the cart
       function addToCart(productId) {
-        const qty = productQuantities[productId] || 0;
-        if (qty > 0) {
-          cart[productId] = (cart[productId] || 0) + qty;
+        // Get how many items the user selected
+        const selectedQuantity = productQuantities[productId] || 0;
+
+        // Only add to cart if quantity is greater than 0
+        if (selectedQuantity > 0) {
+          // Add to cart (or increase existing quantity)
+          if (cart[productId]) {
+            // Product already in cart, add to existing quantity
+            cart[productId] = cart[productId] + selectedQuantity;
+          } else {
+            // New product, add it to cart
+            cart[productId] = selectedQuantity;
+          }
+
+          // Reset the product quantity selector back to 0
           productQuantities[productId] = 0;
+
+          // Refresh the products display
           renderProducts();
+
+          // Update the cart footer to show new totals
           updateCartFooter();
 
+          // Give haptic feedback if in Telegram (phone vibration)
           if (window.Telegram && window.Telegram.WebApp) {
             window.Telegram.WebApp.HapticFeedback.impactOccurred("medium");
           }
         }
       }
 
-      // Update cart footer
+      // This function calculates totals and updates the cart footer
       function updateCartFooter() {
-        const itemCount = Object.values(cart).reduce(
-          (sum, qty) => sum + qty,
-          0,
-        );
-        const total = Object.entries(cart).reduce((sum, [id, qty]) => {
-          const product = PRODUCTS.find((p) => p.id === parseInt(id));
-          return sum + product.price * qty;
-        }, 0);
+        // Calculate total number of items in cart
+        let totalItems = 0;
 
-        document.getElementById("cartItemCount").textContent = itemCount;
+        // Loop through cart and add up all quantities
+        for (let productId in cart) {
+          totalItems = totalItems + cart[productId];
+        }
+
+        // Calculate total price
+        let totalPrice = 0;
+
+        // Loop through cart items
+        for (let productId in cart) {
+          const quantity = cart[productId];
+
+          // Find the product details
+          let product = null;
+          for (let i = 0; i < PRODUCTS.length; i++) {
+            if (PRODUCTS[i].id === parseInt(productId)) {
+              product = PRODUCTS[i];
+              break;
+            }
+          }
+
+          // Add to total price
+          if (product) {
+            totalPrice = totalPrice + product.price * quantity;
+          }
+        }
+
+        // Update the cart item count display
+        document.getElementById("cartItemCount").textContent = totalItems;
+
+        // Update the cart total price display
         document.getElementById("cartTotal").textContent =
-          `$${total.toFixed(2)}`;
+          "$" + totalPrice.toFixed(2);
 
-        if (itemCount > 0) {
-          document.getElementById("cartFooter").classList.remove("hidden");
+        // Show or hide the cart footer
+        const cartFooter = document.getElementById("cartFooter");
+
+        if (totalItems > 0) {
+          // Cart has items, show the footer
+          cartFooter.classList.remove("hidden");
         } else {
-          document.getElementById("cartFooter").classList.add("hidden");
+          // Cart is empty, hide the footer
+          cartFooter.classList.add("hidden");
         }
       }
 
-      // Navigation
+      // ========================================
+      // NAVIGATION FUNCTIONS
+      // ========================================
+
+      // Navigate to the checkout page
       function goToCheckout() {
+        // Hide the products page
         document.getElementById("productsPage").classList.add("hidden");
+
+        // Show the checkout page
         document.getElementById("checkoutPage").classList.remove("hidden");
+
+        // Display the cart items on checkout page
         renderCheckout();
       }
 
+      // Navigate back to the products page
       function goToProducts() {
+        // Hide checkout and success pages
         document.getElementById("checkoutPage").classList.add("hidden");
         document.getElementById("successPage").classList.add("hidden");
+
+        // Show products page
         document.getElementById("productsPage").classList.remove("hidden");
       }
 
-      // Render checkout
+      // ========================================
+      // CHECKOUT PAGE FUNCTIONS
+      // ========================================
+
+      // Display cart items on the checkout page
       function renderCheckout() {
         const itemsContainer = document.getElementById("checkoutItems");
-        const total = Object.entries(cart).reduce((sum, [id, qty]) => {
-          const product = PRODUCTS.find((p) => p.id === parseInt(id));
-          return sum + product.price * qty;
-        }, 0);
 
-        itemsContainer.innerHTML = Object.entries(cart)
-          .map(([id, qty]) => {
-            const product = PRODUCTS.find((p) => p.id === parseInt(id));
-            return `
-          <div class="cart-item">
-            <div class="cart-item-emoji">${product.image}</div>
-            <div class="cart-item-details">
-              <div class="cart-item-name">${product.name}</div>
-              <div class="cart-item-price">$${product.price.toFixed(2)} each</div>
-            </div>
-            <div class="cart-item-controls">
-              <button class="cart-qty-btn" onclick="updateCartQuantity(${product.id}, -1)">−</button>
-              <span class="cart-qty-display">${qty}</span>
-              <button class="cart-qty-btn" onclick="updateCartQuantity(${product.id}, 1)">+</button>
-            </div>
-            <div class="cart-item-right">
-              <div class="cart-item-subtotal">$${(product.price * qty).toFixed(2)}</div>
-              <button class="remove-btn" onclick="removeFromCart(${product.id})">Remove</button>
-            </div>
-          </div>
-        `;
-          })
-          .join("");
-
-        document.getElementById("checkoutTotal").textContent =
-          `$${total.toFixed(2)}`;
-        document.getElementById("placeOrderBtn").textContent =
-          `Place Order - $${total.toFixed(2)}`;
-      }
-
-      // Update cart quantity
-      function updateCartQuantity(productId, delta) {
-        cart[productId] = (cart[productId] || 0) + delta;
-        if (cart[productId] <= 0) {
-          delete cart[productId];
+        // Calculate total price (same logic as updateCartFooter)
+        let totalPrice = 0;
+        for (let productId in cart) {
+          const quantity = cart[productId];
+          let product = null;
+          for (let i = 0; i < PRODUCTS.length; i++) {
+            if (PRODUCTS[i].id === parseInt(productId)) {
+              product = PRODUCTS[i];
+              break;
+            }
+          }
+          if (product) {
+            totalPrice = totalPrice + product.price * quantity;
+          }
         }
+
+        // Build HTML for each cart item
+        let cartItemsHTML = "";
+
+        for (let productId in cart) {
+          const quantity = cart[productId];
+
+          // Find the product
+          let product = null;
+          for (let i = 0; i < PRODUCTS.length; i++) {
+            if (PRODUCTS[i].id === parseInt(productId)) {
+              product = PRODUCTS[i];
+              break;
+            }
+          }
+
+          if (product) {
+            // Calculate subtotal for this item
+            const subtotal = product.price * quantity;
+
+            // Build HTML for this cart item
+            cartItemsHTML += `
+              <div class="cart-item">
+                <div class="cart-item-emoji">${product.image}</div>
+                <div class="cart-item-details">
+                  <div class="cart-item-name">${product.name}</div>
+                  <div class="cart-item-price">$${product.price.toFixed(2)} each</div>
+                </div>
+                <div class="cart-item-controls">
+                  <button class="cart-qty-btn" onclick="updateCartQuantity(${product.id}, -1)">−</button>
+                  <span class="cart-qty-display">${quantity}</span>
+                  <button class="cart-qty-btn" onclick="updateCartQuantity(${product.id}, 1)">+</button>
+                </div>
+                <div class="cart-item-right">
+                  <div class="cart-item-subtotal">$${subtotal.toFixed(2)}</div>
+                  <button class="remove-btn" onclick="removeFromCart(${product.id})">Remove</button>
+                </div>
+              </div>
+            `;
+          }
+        }
+
+        // Display all cart items
+        itemsContainer.innerHTML = cartItemsHTML;
+
+        // Update the total price displays
+        document.getElementById("checkoutTotal").textContent =
+          "$" + totalPrice.toFixed(2);
+        document.getElementById("placeOrderBtn").textContent =
+          "Place Order - $" + totalPrice.toFixed(2);
+      }
+
+      // Update quantity of an item already in the cart
+      function updateCartQuantity(productId, delta) {
+        // Get current quantity
+        let currentQty = cart[productId] || 0;
+
+        // Calculate new quantity
+        let newQty = currentQty + delta;
+
+        // If new quantity is 0 or less, remove item from cart
+        if (newQty <= 0) {
+          delete cart[productId];
+        } else {
+          // Update the quantity
+          cart[productId] = newQty;
+        }
+
+        // Refresh the checkout display
         renderCheckout();
+
+        // Update the cart footer
         updateCartFooter();
       }
 
-      // Remove from cart
+      // Remove an item completely from the cart
       function removeFromCart(productId) {
+        // Delete the product from cart
         delete cart[productId];
+
+        // Refresh displays
         renderCheckout();
         updateCartFooter();
 
-        if (Object.keys(cart).length === 0) {
+        // If cart is now empty, go back to products page
+        let cartIsEmpty = true;
+        for (let id in cart) {
+          cartIsEmpty = false;
+          break;
+        }
+
+        if (cartIsEmpty) {
           goToProducts();
         }
       }
 
-      // Place order
+      // ========================================
+      // ORDER SUBMISSION
+      // ========================================
+
+      // This function submits the order to Google Sheets
       async function placeOrder() {
+        // Get the form values
         const name = document.getElementById("customerName").value.trim();
         const phone = document.getElementById("customerPhone").value.trim();
         const address = document.getElementById("customerAddress").value.trim();
 
+        // Check if all required fields are filled
         if (!name || !phone || !address) {
           alert("Please fill in all required fields");
           return;
         }
 
+        // Disable the button and show processing state
         const btn = document.getElementById("placeOrderBtn");
         btn.disabled = true;
         btn.textContent = "Processing...";
 
-        const total = Object.entries(cart).reduce((sum, [id, qty]) => {
-          const product = PRODUCTS.find((p) => p.id === parseInt(id));
-          return sum + product.price * qty;
-        }, 0);
+        // Calculate total price
+        let totalPrice = 0;
+        for (let productId in cart) {
+          const quantity = cart[productId];
+          let product = null;
+          for (let i = 0; i < PRODUCTS.length; i++) {
+            if (PRODUCTS[i].id === parseInt(productId)) {
+              product = PRODUCTS[i];
+              break;
+            }
+          }
+          if (product) {
+            totalPrice = totalPrice + product.price * quantity;
+          }
+        }
 
-        const orderData = {
-          orderId: `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          customer: { name, phone, address },
-          items: Object.entries(cart).map(([id, qty]) => {
-            const product = PRODUCTS.find((p) => p.id === parseInt(id));
-            return {
-              productId: id,
+        // Create a unique order ID
+        const timestamp = Date.now(); // Current time in milliseconds
+        const randomStr = Math.random().toString(36).substr(2, 9); // Random string
+        const orderId = "ORD-" + timestamp + "-" + randomStr;
+
+        // Build the order items array
+        let orderItems = [];
+        for (let productId in cart) {
+          const quantity = cart[productId];
+
+          // Find the product
+          let product = null;
+          for (let i = 0; i < PRODUCTS.length; i++) {
+            if (PRODUCTS[i].id === parseInt(productId)) {
+              product = PRODUCTS[i];
+              break;
+            }
+          }
+
+          if (product) {
+            orderItems.push({
+              productId: productId,
               productName: product.name,
-              quantity: qty,
+              quantity: quantity,
               price: product.price,
-              subtotal: product.price * qty,
-            };
-          }),
-          total: total,
+              subtotal: product.price * quantity,
+            });
+          }
+        }
+
+        // Create the complete order data object
+        const orderData = {
+          orderId: orderId,
+          customer: {
+            name: name,
+            phone: phone,
+            address: address,
+          },
+          items: orderItems,
+          total: totalPrice,
           telegramUser: telegramUser
             ? {
                 id: telegramUser.id,
@@ -827,46 +1074,65 @@
                 lastName: telegramUser.last_name || "",
               }
             : null,
-          timestamp: new Date().toISOString(),
+          timestamp: new Date().toISOString(), // Current date/time in ISO format
         };
 
+        // Send the order to Google Sheets
         try {
+          // Make the HTTP request
           await fetch(GOOGLE_SCRIPT_URL, {
             method: "POST",
-            mode: "no-cors",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(orderData),
+            mode: "no-cors", // Required for Google Apps Script
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(orderData), // Convert object to JSON string
           });
 
+          // Order sent successfully!
+
+          // Clear the cart
           cart = {};
+
+          // Clear the form fields
           document.getElementById("customerName").value = "";
           document.getElementById("customerPhone").value = "";
           document.getElementById("customerAddress").value = "";
 
+          // Hide checkout page and show success page
           document.getElementById("checkoutPage").classList.add("hidden");
           document.getElementById("successPage").classList.remove("hidden");
 
+          // Update cart footer (will hide it since cart is empty)
           updateCartFooter();
 
+          // Give success haptic feedback if in Telegram
           if (window.Telegram && window.Telegram.WebApp) {
             window.Telegram.WebApp.HapticFeedback.notificationOccurred(
               "success",
             );
           }
         } catch (error) {
+          // Something went wrong
           console.error("Order error:", error);
           alert("Failed to submit order. Please try again.");
 
+          // Give error haptic feedback if in Telegram
           if (window.Telegram && window.Telegram.WebApp) {
             window.Telegram.WebApp.HapticFeedback.notificationOccurred("error");
           }
         } finally {
+          // Re-enable the button (whether success or error)
           btn.disabled = false;
-          btn.textContent = `Place Order - $${total.toFixed(2)}`;
+          btn.textContent = "Place Order - $" + totalPrice.toFixed(2);
         }
       }
 
-      // Initialize on load
+      // ========================================
+      // START THE APP
+      // ========================================
+
+      // When the page loads, run the init function
       init();
     </script>
   </body>
