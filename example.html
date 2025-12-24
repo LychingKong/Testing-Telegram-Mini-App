@@ -1,0 +1,24 @@
+<div class="product-card">
+  <div class="product-content">
+    <div class="product-emoji">🎧</div>
+    <div class="product-name">Premium Headphones</div>
+    <div class="product-desc">High-quality wireless headphones</div>
+    <div class="product-price">$79.99</div>
+    <div class="product-controls">
+      <div class="quantity-controls">
+        <button
+          class="qty-btn"
+          onclick="updateProductQuantity(1, -1)"
+          ${minusDisabled}
+        >
+          −
+        </button>
+        <div class="qty-display" id="qty-1">0</div>
+        <button class="qty-btn" onclick="updateProductQuantity(1, 1)">+</button>
+      </div>
+      <button class="add-to-cart-btn" onclick="addToCart(1)" ${addDisabled}>
+        Add to Cart
+      </button>
+    </div>
+  </div>
+</div>
